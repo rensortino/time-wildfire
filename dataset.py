@@ -1,10 +1,13 @@
 import glob
 import random
-import torch
+
 import numpy as np
+import torch
+import cv2
 from PIL import Image
-from torchvision import transforms
 from torch.utils.data import Dataset
+from torchvision import transforms
+from utils import norm_01, get_lbp, get_motion_image
 
 
 def xywh2xyxy(x: np.array):
@@ -106,8 +109,26 @@ class FireSeriesDataset(Dataset):
         # Stack the images into a tensor with shape (sequence_length, C, H, W)
         img_sequence = torch.stack(img_sequence, dim=0)
 
+        images = img_sequence.permute((0,2,3,1))
+        images = norm_01(images)
+        images = images * 255
+        images = images.numpy().astype(np.uint8) 
+
+        images_gray = []
+        images_lbp = []
+        for image in images:
+            gs_image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+            lbp = get_lbp(gs_image.squeeze())
+            images_lbp.append(lbp)
+            images_gray.append(gs_image)
+
+        motion_images = []
+        for i in range(len(images)-1):
+            motion_images.append(get_motion_image(images_gray[i], images_gray[i+1], images_lbp[i]))
+
+        motion_images = torch.tensor(motion_images)
         # Return the sequence of images as a tensor and the corresponding label
-        return img_sequence, int(img_folder.split("/")[-2])  # Adjust label as necessary
+        return motion_images, int(img_folder.split("/")[-2])  # Adjust label as necessary
     
 
 if __name__ == "__main__":
