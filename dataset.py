@@ -1,13 +1,14 @@
 import glob
 import random
 
+import cv2
 import numpy as np
 import torch
-import cv2
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
-from utils import norm_01, get_lbp, get_motion_image
+
+from utils import get_lbp, get_motion_image, norm_01
 
 
 def xywh2xyxy(x: np.array):
@@ -18,8 +19,10 @@ def xywh2xyxy(x: np.array):
     y[..., 3] = x[..., 1] + x[..., 3] / 2  # bottom right y
     return y
 
+
 def inverse_normalize(x, mean, std):
     return x * std + mean
+
 
 class FireSeriesDataset(Dataset):
     def __init__(self, root_dir, img_size=224, transform=None, crop_margin=1.2):
@@ -109,10 +112,10 @@ class FireSeriesDataset(Dataset):
         # Stack the images into a tensor with shape (sequence_length, C, H, W)
         img_sequence = torch.stack(img_sequence, dim=0)
 
-        images = img_sequence.permute((0,2,3,1))
+        images = img_sequence.permute((0, 2, 3, 1))
         images = norm_01(images)
         images = images * 255
-        images = images.numpy().astype(np.uint8) 
+        images = images.numpy().astype(np.uint8)
 
         images_gray = []
         images_lbp = []
@@ -123,13 +126,17 @@ class FireSeriesDataset(Dataset):
             images_gray.append(gs_image)
 
         motion_images = []
-        for i in range(len(images)-1):
-            motion_images.append(get_motion_image(images_gray[i], images_gray[i+1], images_lbp[i]))
+        for i in range(len(images) - 1):
+            motion_images.append(
+                get_motion_image(images_gray[i], images_gray[i + 1], images_lbp[i])
+            )
 
         motion_images = torch.tensor(motion_images)
         # Return the sequence of images as a tensor and the corresponding label
-        return motion_images, int(img_folder.split("/")[-2])  # Adjust label as necessary
-    
+        return motion_images, int(
+            img_folder.split("/")[-2]
+        )  # Adjust label as necessary
+
 
 if __name__ == "__main__":
     ds = FireSeriesDataset("data/images/train")
