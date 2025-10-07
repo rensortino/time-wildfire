@@ -23,24 +23,26 @@ def xywh2xyxy(x: np.array):
 def inverse_normalize(x, mean, std):
     return x * std + mean
 
+def get_transforms(img_size, is_train=False):
+    # TODO Since the calucation of the optical flow is done in the 
+    # collate function, here we manually apply the transforms via the functional API
+    # and split them in two. Here we apply resize and randomflip, while in the 
+    # collate function we apply to tensor and normalize
+    return transforms.Compose(
+        [
+            transforms.Resize(
+                (img_size, img_size)
+            ),  # Resize to the desired img_size
+            # transforms.RandomHorizontalFlip(p=0.5), # TODO Apply random flip to all images
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+            ),  # ImageNet normalization
+        ])
 
 class FireSeriesDataset(Dataset):
-    def __init__(self, root_dir, img_size=224, transform=None, crop_margin=1.2):
-        self.transform = (
-            transform
-            if transform
-            else transforms.Compose(
-                [
-                    transforms.Resize(
-                        (img_size, img_size)
-                    ),  # Resize to the desired img_size
-                    transforms.ToTensor(),
-                    transforms.Normalize(
-                        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                    ),  # ImageNet normalization
-                ]
-            )
-        )
+    def __init__(self, root_dir, img_size=224, transform=None, crop_margin=1.2, return_torch=True):
+        self.transform = transform
         self.sets = glob.glob(f"{root_dir}/**/*")
         random.shuffle(self.sets)
         self.img_size = img_size
@@ -49,6 +51,7 @@ class FireSeriesDataset(Dataset):
             0: "no_fire",
             1: "fire",
         }
+        self.return_torch = return_torch
 
     def __len__(self):
         return len(self.sets)
@@ -57,6 +60,8 @@ class FireSeriesDataset(Dataset):
         img_folder = self.sets[idx]
         img_list = glob.glob(f"{img_folder}/*.jpg")
         img_list.sort()
+
+        cls_label = int(img_folder.split("/")[-2]) 
 
         images = [Image.open(file) for file in img_list]
         w, h = images[0].size
@@ -110,36 +115,45 @@ class FireSeriesDataset(Dataset):
             img_sequence.append(cropped_image)
 
         # Stack the images into a tensor with shape (sequence_length, C, H, W)
-        img_sequence = torch.stack(img_sequence, dim=0)
+        if self.return_torch:
+            img_sequence = torch.stack(img_sequence, dim=0)
 
-        images = img_sequence.permute((0, 2, 3, 1))
-        images = norm_01(images)
-        images = images * 255
-        images = images.numpy().astype(np.uint8)
+        return img_sequence, cls_label  # Adjust label as necessary
+
+
+class FireMotionDataset(FireSeriesDataset):
+    def __init__(self, root_dir, img_size=224, transform=None, crop_margin=1.2):
+        super().__init__(root_dir, img_size, transform=None, crop_margin=crop_margin, return_torch=False)
+        self.transform = transform
+
+    def __getitem__(self, idx):
+        img_sequence, label = super().__getitem__(idx)
+
+        images = [np.array(img) for img in img_sequence]
 
         images_gray = []
         images_lbp = []
         for image in images:
             gs_image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+            images_gray.append(gs_image)
             lbp = get_lbp(gs_image.squeeze())
             images_lbp.append(lbp)
-            images_gray.append(gs_image)
 
-        motion_images = []
-        for i in range(len(images) - 1):
-            motion_images.append(
-                get_motion_image(images_gray[i], images_gray[i + 1], images_lbp[i])
-            )
+        images = {
+            "gray": np.array(images_gray),
+            "lbp": np.array(images_lbp)
 
-        motion_images = torch.tensor(motion_images)
-        # Return the sequence of images as a tensor and the corresponding label
-        return motion_images, int(
-            img_folder.split("/")[-2]
-        )  # Adjust label as necessary
+        }
+        return images, label
 
 
 if __name__ == "__main__":
-    ds = FireSeriesDataset("data/images/train")
+    ds = FireMotionDataset("data/images/train")
+    from torchvision.utils import save_image
+
     for el in ds:
         imgs, label = el
         print(imgs.shape, label)
+        # imgs = imgs / 255
+        save_image(imgs, "tmp.png", normalize=True)
+        break
