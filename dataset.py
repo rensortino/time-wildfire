@@ -124,7 +124,7 @@ class FireSeriesDataset(Dataset):
 class FireMotionDataset(FireSeriesDataset):
     def __init__(self, root_dir, img_size=224, transform=None, crop_margin=1.2):
         super().__init__(root_dir, img_size, transform=None, crop_margin=crop_margin, return_torch=False)
-        self.transform = transform
+        self.motion_transform = transform
 
     def __getitem__(self, idx):
         img_sequence, label = super().__getitem__(idx)
