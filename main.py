@@ -1,10 +1,11 @@
 from torchvision.models import efficientnet_v2_s, EfficientNet_V2_S_Weights
-from dataset import FireSeriesDataset
+from dataset import FireMotionDataset, get_transforms
 from torch.utils.data import DataLoader
 from torch.optim import Adam
 import torch
 import numpy as np
 from utils import get_motion_image
+from omegaconf import OmegaConf
 import trackio
 import random
 
@@ -81,5 +82,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-    args = {"epochs": 50, "lr": 1e-5, "device": "cuda:0"}
+    args = {"epochs": 50, "lr": 1e-5, "device": "cuda:0", "img_size": 224}
+    args = OmegaConf.create(args)
     main(args)
