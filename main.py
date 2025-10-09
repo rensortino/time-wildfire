@@ -15,28 +15,37 @@ def collate_fn(batch):
         images, label = el
         images_gray = images['gray']
         images_lbp = images['lbp']
-        prev_idx = random.randint(0,len(images_gray)-1)
+
+        if random.random() > 0.5: # Random flip
+            images_gray = images_gray[:,:,::-1]
+            images_lbp = images_lbp[:,:,::-1]
+
+        
+        prev_idx = random.randint(0,len(images_gray)-2)
         prev = images_gray[prev_idx]
-        next_idx = np.random.choice(images_gray[prev_idx:])
+        next_idx = random.randint(prev_idx+1, len(images_gray)-1)
         next = images_gray[next_idx]
         motion_images.append(
-            get_motion_image(prev, next, images_lbp[prev])
+            get_motion_image(prev, next, images_lbp[prev_idx])
         )
         labels.append(label)
 
-        motion_images = torch.tensor(motion_images)
-        # TODO Fix this horrible continuous data parsing and apply the correct normalization of the values
-        motion_images = motion_images.permute(0, 3, 1, 2) / 255
-        return motion_images, labels
+    motion_images = torch.tensor(motion_images)
+    motion_images = motion_images.permute(0, 3, 1, 2)
+    motion_images = motion_images / 255
+    labels = torch.tensor(labels)
+    return motion_images, labels
 
     
 
 def main(args):
-    train_dataset = FireSeriesDataset("data/images/train")
-    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=4)
+    train_transforms = get_transforms(img_size=args.img_size, is_train=True)
+    train_dataset = FireMotionDataset("data/images/train", img_size=args.img_size, transform=train_transforms)
+    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=0, collate_fn=collate_fn)
 
-    val_dataset = FireSeriesDataset("data/images/val")
-    val_loader = DataLoader(val_dataset, batch_size=8, shuffle=False, num_workers=4)
+    val_transform = get_transforms(img_size=args.img_size)
+    val_dataset = FireMotionDataset("data/images/val", img_size=args.img_size, transform=val_transform)
+    val_loader = DataLoader(val_dataset, batch_size=8, shuffle=False, num_workers=0, collate_fn=collate_fn)
 
     model = efficientnet_v2_s(EfficientNet_V2_S_Weights.DEFAULT).to(args.device)
 
@@ -48,7 +57,7 @@ def main(args):
         train_loss = 0
         val_acc = 0
         val_loss = 0
-        for i, batch in train_loader:
+        for i, batch in enumerate(train_loader):
             sequence, label = batch
             sequence = sequence.to(args.device)
             label = label.to(args.device)
