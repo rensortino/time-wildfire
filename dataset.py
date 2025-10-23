@@ -1,6 +1,6 @@
 import glob
 import random
-
+import os
 import cv2
 import numpy as np
 import torch
@@ -61,7 +61,7 @@ class FireSeriesDataset(Dataset):
         img_list = glob.glob(f"{img_folder}/*.jpg")
         img_list.sort()
 
-        cls_label = int(img_folder.split("/")[-2]) 
+        cls_label = int(img_folder.split(os.path.sep)[-2]) 
 
         images = [Image.open(file) for file in img_list]
         w, h = images[0].size
@@ -86,7 +86,6 @@ class FireSeriesDataset(Dataset):
         x0, y0, x1, y1 = int(x0 * w), int(y0 * h), int(x1 * w), int(y1 * h)
         xc = x0 + (x1 - x0) / 2
         yc = y0 + (y1 - y0) / 2
-
         crop_size = max(x1 - x0, y1 - y0) * self.crop_margin
 
         if crop_size < self.img_size:
@@ -135,16 +134,24 @@ class FireMotionDataset(FireSeriesDataset):
         images_lbp = []
         for image in images:
             gs_image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-            images_gray.append(gs_image)
             lbp = get_lbp(gs_image.squeeze())
+
+            if random.random() > 0.5: # Random flip
+                gs_image = gs_image[:,::-1]
+                lbp = lbp[:,::-1]
+            
+            images_gray.append(gs_image)
             images_lbp.append(lbp)
 
-        images = {
-            "gray": np.array(images_gray),
-            "lbp": np.array(images_lbp)
+        prev_idx = random.randint(0,len(images_gray)-2)
+        prev = images_gray[prev_idx]
+        next_idx = random.randint(prev_idx+1, len(images_gray)-1)
+        next = images_gray[next_idx]
+        motion_image = get_motion_image(prev, next, images_lbp[prev_idx])
 
-        }
-        return images, label
+        motion_image = self.motion_transform(Image.fromarray(motion_image))
+        label = torch.tensor(label).float()
+        return motion_image, label
 
 
 if __name__ == "__main__":

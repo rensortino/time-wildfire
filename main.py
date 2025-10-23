@@ -3,51 +3,74 @@ from dataset import FireMotionDataset, get_transforms
 from torch.utils.data import DataLoader
 from torch.optim import Adam
 import torch
+import torch.nn as nn
 import numpy as np
 from utils import get_motion_image
 from omegaconf import OmegaConf
 import trackio
+from pathlib import Path
 import random
 
-def collate_fn(batch):
-    motion_images, labels = [], []
-    for el in batch:
-        images, label = el
-        images_gray = images['gray']
-        images_lbp = images['lbp']
 
-        if random.random() > 0.5: # Random flip
-            images_gray = images_gray[:,:,::-1]
-            images_lbp = images_lbp[:,:,::-1]
-
-        
-        prev_idx = random.randint(0,len(images_gray)-2)
-        prev = images_gray[prev_idx]
-        next_idx = random.randint(prev_idx+1, len(images_gray)-1)
-        next = images_gray[next_idx]
-        motion_images.append(
-            get_motion_image(prev, next, images_lbp[prev_idx])
-        )
-        labels.append(label)
-
-    motion_images = torch.tensor(motion_images)
-    motion_images = motion_images.permute(0, 3, 1, 2)
-    motion_images = motion_images / 255
-    labels = torch.tensor(labels)
-    return motion_images, labels
-
+class EfficientNetFeatureExtractor(nn.Module):
+    """EfficientNet feature extractor with MLP head for binary classification"""
     
+    def __init__(self, pretrained_weights=EfficientNet_V2_S_Weights.DEFAULT, freeze_backbone=True):
+        super().__init__()
+        
+        # Load pretrained EfficientNet
+        efficientnet = efficientnet_v2_s(weights=pretrained_weights)
+        
+        # Extract the feature extractor (everything except the classifier)
+        self.features = efficientnet.features
+        self.avgpool = efficientnet.avgpool
+        
+        # Freeze the backbone if specified
+        if freeze_backbone:
+            for param in self.features.parameters():
+                param.requires_grad = False
+        
+        # Get the number of features from the last conv layer
+        # EfficientNet_V2_S has 1280 features
+        num_features = 1280
+        
+        # MLP head for binary classification
+        self.classifier = nn.Sequential(
+            nn.Dropout(p=0.2),
+            nn.Linear(num_features, 512),
+            nn.ReLU(),
+            nn.Dropout(p=0.2),
+            nn.Linear(512, 128),
+            nn.ReLU(),
+            nn.Linear(128, 1),
+            nn.Sigmoid()
+        )
+    
+    def forward(self, x):
+        # Extract features
+        x = self.features(x)
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)
+        
+        # MLP classification
+        x = self.classifier(x)
+        x = x.squeeze(-1)  # Remove last dimension for binary classification
+        return x
 
 def main(args):
+    torch.autograd.set_detect_anomaly(True)
     train_transforms = get_transforms(img_size=args.img_size, is_train=True)
     train_dataset = FireMotionDataset("data/images/train", img_size=args.img_size, transform=train_transforms)
-    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=0, collate_fn=collate_fn)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=0)
 
     val_transform = get_transforms(img_size=args.img_size)
     val_dataset = FireMotionDataset("data/images/val", img_size=args.img_size, transform=val_transform)
-    val_loader = DataLoader(val_dataset, batch_size=8, shuffle=False, num_workers=0, collate_fn=collate_fn)
+    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
 
-    model = efficientnet_v2_s(EfficientNet_V2_S_Weights.DEFAULT).to(args.device)
+    model = EfficientNetFeatureExtractor(
+        pretrained_weights=EfficientNet_V2_S_Weights.DEFAULT,
+        freeze_backbone=True
+    ).to(args.device)
 
     optimizer = Adam(model.parameters(), lr=args.lr)
     criterion = torch.nn.BCELoss()
@@ -64,7 +87,7 @@ def main(args):
 
             logits = model(sequence)
             loss = criterion(logits, label)
-            pred = torch.nn.functional.softmax(logits)
+            pred = (logits > 0.5).float()
             train_acc += (pred == label).sum() / args.batch_size
             train_loss += loss.detach()
             optimizer.zero_grad()
@@ -91,6 +114,8 @@ def main(args):
 
 
 if __name__ == "__main__":
-    args = {"epochs": 50, "lr": 1e-5, "device": "cuda:0", "img_size": 224}
+    args = {"epochs": 50, "lr": 1e-5, "device": "cpu", "img_size": 224, "train_dir": "data/images/train", "val_dir": "data/images/val", "batch_size": 8}
     args = OmegaConf.create(args)
+    args.train_dir = Path(args.train_dir)
+    args.val_dir = Path(args.val_dir)
     main(args)
