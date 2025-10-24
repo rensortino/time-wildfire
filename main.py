@@ -1,4 +1,5 @@
 from torchvision.models import efficientnet_v2_s, EfficientNet_V2_S_Weights
+from tqdm import tqdm
 from dataset import FireMotionDataset, get_transforms
 from torch.utils.data import DataLoader
 from torch.optim import Adam
@@ -61,11 +62,11 @@ def main(args):
     torch.autograd.set_detect_anomaly(True)
     train_transforms = get_transforms(img_size=args.img_size, is_train=True)
     train_dataset = FireMotionDataset("data/images/train", img_size=args.img_size, transform=train_transforms)
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=0)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
 
     val_transform = get_transforms(img_size=args.img_size)
     val_dataset = FireMotionDataset("data/images/val", img_size=args.img_size, transform=val_transform)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
+    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
 
     model = EfficientNetFeatureExtractor(
         pretrained_weights=EfficientNet_V2_S_Weights.DEFAULT,
@@ -76,11 +77,12 @@ def main(args):
     criterion = torch.nn.BCELoss()
 
     for epoch in range(args.epochs):
+        print(f"Training: [{epoch}/{args.epochs}]")
         train_acc = 0
         train_loss = 0
         val_acc = 0
         val_loss = 0
-        for i, batch in enumerate(train_loader):
+        for i, batch in tqdm(enumerate(train_loader)):
             sequence, label = batch
             sequence = sequence.to(args.device)
             label = label.to(args.device)
@@ -114,7 +116,7 @@ def main(args):
 
 
 if __name__ == "__main__":
-    args = {"epochs": 50, "lr": 1e-5, "device": "cpu", "img_size": 224, "train_dir": "data/images/train", "val_dir": "data/images/val", "batch_size": 8}
+    args = {"epochs": 50, "lr": 1e-5, "device": "cuda:0", "img_size": 224, "train_dir": "data/images/train", "val_dir": "data/images/val", "batch_size": 128, "num_workers": 4}
     args = OmegaConf.create(args)
     args.train_dir = Path(args.train_dir)
     args.val_dir = Path(args.val_dir)
