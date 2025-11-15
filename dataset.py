@@ -117,7 +117,7 @@ class FireSeriesDataset(Dataset):
         if self.return_torch:
             img_sequence = torch.stack(img_sequence, dim=0)
 
-        return img_sequence, cls_label  # Adjust label as necessary
+        return img_sequence, torch.tensor(cls_label, dtype=torch.float32)  # Adjust label as necessary
 
 
 class FireMotionDataset(FireSeriesDataset):
