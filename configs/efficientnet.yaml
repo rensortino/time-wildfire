@@ -1,0 +1,37 @@
+# Configuration for EfficientNet baseline (motion image-based)
+
+# Training parameters
+epochs: 50
+lr: 1.0e-5
+device: cuda:0
+batch_size: 128
+num_workers: 4
+dropout: 0.1
+
+# Logging and checkpointing
+checkpoint_dir: checkpoints/efficientnet
+log_dir: logs/efficientnet
+checkpoint_frequency: 10  # Save checkpoint every N epochs
+
+# Data parameters
+img_size: 224
+train_dir: data/images/train
+val_dir: data/images/val
+num_frames: 8  # Not used for efficientnet
+
+# Model parameters
+backbone: efficientnet
+pretrained: true
+freeze_backbone: true
+
+# VideoMAE-specific parameters (not used for efficientnet)
+videomae_model_name: "MCG-NJU/videomae-base"
+
+# ViViT-specific parameters (not used for efficientnet)
+vivit_model_name: "google/vivit-b-16x2-kinetics400"
+
+# CNN+Transformer-specific parameters (not used for efficientnet)
+transformer_embed_dim: 512
+transformer_num_heads: 8
+transformer_num_layers: 4
+

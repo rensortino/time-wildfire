@@ -1,0 +1,40 @@
+# Configuration for ViViT (Video Vision Transformer)
+# Uses pretrained ViViT model from HuggingFace (Google Research)
+
+# Training parameters
+epochs: 50
+lr: 5.0e-5
+device: cuda:0
+batch_size: 4  # Small batch size for transformer (ViViT uses 32 frames by default)
+num_workers: 4
+dropout: 0.1
+
+# Logging and checkpointing
+checkpoint_dir: checkpoints/vivit
+log_dir: logs/vivit
+checkpoint_frequency: 10  # Save checkpoint every N epochs
+
+# Data parameters
+img_size: 224
+train_dir: data/images/train
+val_dir: data/images/val
+num_frames: 32  # ViViT is pretrained on 32 frames
+
+# Model parameters
+backbone: vivit
+pretrained: true  # Uses pretrained ViViT from HuggingFace
+freeze_backbone: false  # Fine-tune the entire model (can set to true to only train classifier)
+
+# ViViT-specific parameters
+# Available models from Google:
+# - "google/vivit-b-16x2-kinetics400" (base model, 32 frames, 86M params)
+# - "google/vivit-b-16x2-kinetics400-factorise" (factorized version)
+vivit_model_name: "google/vivit-b-16x2-kinetics400"
+
+# VideoMAE-specific parameters (not used for vivit)
+videomae_model_name: "MCG-NJU/videomae-base"
+
+# CNN+Transformer-specific parameters (not used for vivit)
+transformer_embed_dim: 512
+transformer_num_heads: 8
+transformer_num_layers: 4

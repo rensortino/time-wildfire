@@ -1,0 +1,37 @@
+# Configuration for 2D CNN + Transformer (hybrid approach)
+
+# Training parameters
+epochs: 50
+lr: 3.0e-5
+device: cuda:0
+batch_size: 32  # Medium batch size
+num_workers: 4
+dropout: 0.1
+
+# Logging and checkpointing
+checkpoint_dir: checkpoints/cnn_transformer
+log_dir: logs/cnn_transformer
+checkpoint_frequency: 10  # Save checkpoint every N epochs
+
+# Data parameters
+img_size: 224
+train_dir: data/images/train
+val_dir: data/images/val
+num_frames: 4  # Number of frames in video sequence
+
+# Model parameters
+backbone: cnn_transformer
+pretrained: true
+freeze_backbone: true  # Freeze CNN backbone
+
+# VideoMAE-specific parameters (not used for cnn_transformer)
+videomae_model_name: "MCG-NJU/videomae-base"
+
+# ViViT-specific parameters (not used for cnn_transformer)
+vivit_model_name: "google/vivit-b-16x2-kinetics400"
+
+# CNN+Transformer-specific parameters
+transformer_embed_dim: 512
+transformer_num_heads: 8
+transformer_num_layers: 4
+

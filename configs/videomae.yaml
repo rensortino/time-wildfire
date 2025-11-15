@@ -1,0 +1,42 @@
+# Configuration for VideoMAE (Masked Autoencoder for Videos)
+# Uses pretrained VideoMAE model from HuggingFace
+
+# Training parameters
+epochs: 50
+lr: 5.0e-5
+device: cuda:0
+batch_size: 8  # Small batch size for transformer
+num_workers: 4
+dropout: 0.1
+
+# Logging and checkpointing
+checkpoint_dir: checkpoints/videomae
+log_dir: logs/videomae
+checkpoint_frequency: 10  # Save checkpoint every N epochs
+
+# Data parameters
+img_size: 224
+train_dir: data/images/train
+val_dir: data/images/val
+num_frames: 16  # VideoMAE is pretrained on 16 frames
+
+# Model parameters
+backbone: videomae
+pretrained: true  # Uses pretrained VideoMAE from HuggingFace
+freeze_backbone: false  # Fine-tune the entire model (can set to true to only train classifier)
+
+# VideoMAE-specific parameters
+# Available models:
+# - "MCG-NJU/videomae-base" (default, 86M params)
+# - "MCG-NJU/videomae-small" (smaller, 22M params)
+# - "MCG-NJU/videomae-large" (larger, 304M params)
+videomae_model_name: "MCG-NJU/videomae-base"
+
+# ViViT-specific parameters (not used for videomae)
+vivit_model_name: "google/vivit-b-16x2-kinetics400"
+
+# CNN+Transformer-specific parameters (not used for videomae)
+transformer_embed_dim: 512
+transformer_num_heads: 8
+transformer_num_layers: 4
+
