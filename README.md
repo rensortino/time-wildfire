@@ -69,9 +69,9 @@ python main.py configs/cnn_transformer.yaml
 
 ### Testing Models
 
-Verify all backbones work correctly:
+Test the inference time of all models:
 ```bash
-python test_backbones.py
+python benchmark_inference.py
 ```
 
 ## Model Comparison
