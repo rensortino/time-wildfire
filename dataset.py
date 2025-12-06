@@ -1,13 +1,13 @@
-import glob
-import random
 import os
+import random
+from pathlib import Path
 import cv2
 import numpy as np
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
-
+import pandas as pd
 from utils import get_lbp, get_motion_image, norm_01
 
 
@@ -41,48 +41,93 @@ def get_transforms(img_size, is_train=False):
         ])
 
 class FireSeriesDataset(Dataset):
-    def __init__(self, root_dir, img_size=224, transform=None, crop_margin=1.2, return_torch=True):
+    def __init__(self, csv_file, img_size=224, transform=None, crop_margin=1.2, return_torch=True, max_images_per_sequence=None):
         self.transform = transform
-        self.sets = glob.glob(f"{root_dir}/**/*")
+        self.sets = []
+        # Read CSV using pandas
+        df = pd.read_csv(csv_file)
+        self.root_dir = str(Path(csv_file).parent)
+        
+        # Process bbox column: convert string to numpy array and apply xywh2xyxy
+        def process_bbox(bbox_str):
+            if pd.isna(bbox_str) or bbox_str == '':
+                return np.array([]).reshape(0, 4)
+            bbox_array = np.array(bbox_str.split(), dtype=np.float32)
+            # Reshape to (1, 4) if single bbox, then apply transformation
+            if bbox_array.ndim == 1:
+                bbox_array = bbox_array.reshape(1, -1)
+            return xywh2xyxy(bbox_array)
+        
+        df['bbox'] = df['bbox'].apply(process_bbox)
+        
+        # Group by sequence and store sequences
+        grouped = df.groupby('sequence', sort=False)
+        
+        # Store each sequence as a list of image dictionaries
+        for sequence_name, group_df in grouped:
+            sequence_images = []
+            for _, row in group_df.iterrows():
+                sequence_images.append({
+                    "image_path": row["image_path"],
+                    "label": row["label"],
+                    "bbox": row["bbox"],
+                    "cls_name": row["cls_name"],
+                    "sequence": row["sequence"]
+                })
+            self.sets.append(sequence_images)
+        
         random.shuffle(self.sets)
         self.img_size = img_size
         self.crop_margin = crop_margin
-        self.label2name = {
-            0: "no_fire",
-            1: "fire",
-        }
+        self.max_images_per_sequence = max_images_per_sequence
+        # self.label2name = {
+        #     0: "no_fire",
+        #     1: "fire",
+        # }
         self.return_torch = return_torch
 
     def __len__(self):
         return len(self.sets)
 
     def __getitem__(self, idx):
-        img_folder = self.sets[idx]
-        img_list = glob.glob(f"{img_folder}/*.jpg")
-        img_list.sort()
+        # img_folder = self.sets[idx]
+        # img_list = glob.glob(f"{img_folder}/*.jpg")
+        # img_list.sort()
 
-        cls_label = int(img_folder.split(os.path.sep)[-2]) 
+        # cls_label = int(img_folder.split(os.path.sep)[-2]) 
 
-        images = [Image.open(file) for file in img_list]
-        w, h = images[0].size
-
-        # Collect labels for bounding boxes (assuming one label per image)
-        labels = []
-        for file in img_list:
-            label_file = file.replace("images", "labels").replace(".jpg", ".txt")
-            with open(label_file, "r") as f:
-                lines = f.readlines()
-
-            # Assuming the first line in each label file contains the necessary bounding box info
-            labels.append(np.array(lines[0].split(" ")[1:5]).astype("float"))
-
-        labels = np.array(labels)
-
-        labels = xywh2xyxy(labels)
-
-        x0, y0 = np.min(labels[:, :2], 0)
-        x1, y1 = np.max(labels[:, 2:], 0)
-
+        # idx refers to a sequence
+        sequence_images = self.sets[idx]
+        
+        # Sample max_images_per_sequence images from the sequence
+        if self.max_images_per_sequence is not None and len(sequence_images) > self.max_images_per_sequence:
+            sampled_images = random.sample(sequence_images, self.max_images_per_sequence)
+            # Sort by image path to maintain temporal order if needed
+            sampled_images = sorted(sampled_images, key=lambda x: x["image_path"])
+        else:
+            sampled_images = sequence_images
+        
+        # Load first image to get dimensions and compute crop coordinates
+        first_image_path = sampled_images[0]["image_path"]
+        first_image = Image.open(os.path.join(self.root_dir, first_image_path))
+        w, h = first_image.size
+        
+        # Collect all bboxes from sampled images
+        all_bboxes = []
+        for img_data in sampled_images:
+            bbox = img_data["bbox"]
+            if bbox.size > 0:  # Only add non-empty bboxes
+                all_bboxes.append(bbox)
+        
+        if len(all_bboxes) == 0:
+            # No bboxes, use full image
+            x0, y0, x1, y1 = 0, 0, w, h
+        else:
+            # Combine all bboxes to find overall bounding box
+            combined_bboxes = np.vstack(all_bboxes)
+            x0, y0 = np.min(combined_bboxes[:, :2], axis=0)
+            x1, y1 = np.max(combined_bboxes[:, 2:], axis=0)
+        
         x0, y0, x1, y1 = int(x0 * w), int(y0 * h), int(x1 * w), int(y1 * h)
         xc = x0 + (x1 - x0) / 2
         yc = y0 + (y1 - y0) / 2
@@ -101,10 +146,14 @@ class FireSeriesDataset(Dataset):
             crop_y1 = max(int(yc + crop_size / 2), h)
 
         img_sequence = []
+        labels = []
 
         # Crop, resize, and transform each image in the sequence
-        for im in images:
-            cropped_image = im.crop((crop_x0, crop_y0, crop_x1, crop_y1))
+        for img_data in sampled_images:
+            image_path = img_data["image_path"]
+            image = Image.open(os.path.join(self.root_dir, image_path))
+            
+            cropped_image = image.crop((crop_x0, crop_y0, crop_x1, crop_y1))
             if crop_size > self.img_size:
                 cropped_image = cropped_image.resize((self.img_size, self.img_size))
 
@@ -112,17 +161,29 @@ class FireSeriesDataset(Dataset):
                 cropped_image = self.transform(cropped_image)
 
             img_sequence.append(cropped_image)
+            
+            # Collect label (use first non-empty label if available)
+            label = img_data["label"]
+            if label != '':
+                labels.append(int(label))
+        
+        # Use the most common label or first label if available
+        # if labels:
+        #     cls_label = max(set(labels), key=labels.count) if labels else 0
+        # else:
+        #     cls_label = 0
+        is_wildfire = labels[0] == 0
 
         # Stack the images into a tensor with shape (sequence_length, C, H, W)
         if self.return_torch:
             img_sequence = torch.stack(img_sequence, dim=0)
 
-        return img_sequence, torch.tensor(cls_label, dtype=torch.float32)  # Adjust label as necessary
+        return img_sequence, torch.tensor(is_wildfire, dtype=torch.float32)
 
 
 class FireMotionDataset(FireSeriesDataset):
-    def __init__(self, root_dir, img_size=224, transform=None, crop_margin=1.2):
-        super().__init__(root_dir, img_size, transform=None, crop_margin=crop_margin, return_torch=False)
+    def __init__(self, csv_file, img_size=224, transform=None, crop_margin=1.2, max_images_per_sequence=None):
+        super().__init__(csv_file, img_size, transform=None, crop_margin=crop_margin, return_torch=False, max_images_per_sequence=max_images_per_sequence)
         self.motion_transform = transform
 
     def __getitem__(self, idx):
@@ -155,12 +216,24 @@ class FireMotionDataset(FireSeriesDataset):
 
 
 if __name__ == "__main__":
-    ds = FireMotionDataset("data/images/train")
+    train_transforms = get_transforms(img_size=224, is_train=True)
+    ds = FireMotionDataset("data/val_dataset/dataset.csv", max_images_per_sequence=10, transform=train_transforms)
     from torchvision.utils import save_image
 
     for el in ds:
         imgs, label = el
         print(imgs.shape, label)
         # imgs = imgs / 255
-        save_image(imgs, "tmp.png", normalize=True)
+        save_image(imgs, "motion_image.png", normalize=True)
+        break
+    
+    train_transforms = get_transforms(img_size=224, is_train=True)
+    ds = FireSeriesDataset("data/val_dataset/dataset.csv", max_images_per_sequence=10, transform=train_transforms)
+    from torchvision.utils import save_image
+
+    for el in ds:
+        imgs, label = el
+        print(imgs.shape, label)
+        # imgs = imgs / 255
+        save_image(imgs, "series_image.png", normalize=True)
         break
