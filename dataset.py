@@ -80,22 +80,12 @@ class FireSeriesDataset(Dataset):
         self.img_size = img_size
         self.crop_margin = crop_margin
         self.max_images_per_sequence = max_images_per_sequence
-        # self.label2name = {
-        #     0: "no_fire",
-        #     1: "fire",
-        # }
         self.return_torch = return_torch
 
     def __len__(self):
         return len(self.sets)
 
     def __getitem__(self, idx):
-        # img_folder = self.sets[idx]
-        # img_list = glob.glob(f"{img_folder}/*.jpg")
-        # img_list.sort()
-
-        # cls_label = int(img_folder.split(os.path.sep)[-2]) 
-
         # idx refers to a sequence
         sequence_images = self.sets[idx]
         
@@ -167,11 +157,6 @@ class FireSeriesDataset(Dataset):
             if label != '':
                 labels.append(int(label))
         
-        # Use the most common label or first label if available
-        # if labels:
-        #     cls_label = max(set(labels), key=labels.count) if labels else 0
-        # else:
-        #     cls_label = 0
         is_wildfire = labels[0] == 0
 
         # Stack the images into a tensor with shape (sequence_length, C, H, W)
