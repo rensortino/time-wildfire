@@ -11,6 +11,17 @@ import pandas as pd
 from utils import get_lbp, get_motion_image, norm_01
 
 
+def remove_duplicates(sequence_images):
+    unique_images = []
+    idxs_to_sample = []
+    for i, img, in enumerate(sequence_images):
+        path = img['image_path']
+        if path not in unique_images:
+            unique_images.append(path)
+            idxs_to_sample.append(i)
+
+    return [sequence_images[i] for i in idxs_to_sample]
+
 def xywh2xyxy(x: np.array):
     y = np.copy(x)
     y[..., 0] = x[..., 0] - x[..., 2] / 2  # top left x
@@ -88,15 +99,16 @@ class FireSeriesDataset(Dataset):
     def __getitem__(self, idx):
         # idx refers to a sequence
         sequence_images = self.sets[idx]
-        
+        sequence_images = remove_duplicates(sequence_images)
+
         # Sample max_images_per_sequence images from the sequence
         if self.max_images_per_sequence is not None and len(sequence_images) > self.max_images_per_sequence:
             sampled_images = random.sample(sequence_images, self.max_images_per_sequence)
             # Sort by image path to maintain temporal order if needed
-            sampled_images = sorted(sampled_images, key=lambda x: x["image_path"])
         else:
             sampled_images = sequence_images
         
+        sampled_images = sorted(sampled_images, key=lambda x: x["image_path"])
         # Load first image to get dimensions and compute crop coordinates
         first_image_path = sampled_images[0]["image_path"]
         first_image = Image.open(os.path.join(self.root_dir, first_image_path))
