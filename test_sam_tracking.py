@@ -110,7 +110,7 @@ def calculate_ap(precision: np.ndarray, recall: np.ndarray) -> float:
 
 
 def calculate_ap_metrics(predictions: List[np.ndarray], ground_truths: List[np.ndarray], 
-                         iou_threshold: float = 0.5) -> Dict[str, float]:
+                         iou_threshold: float = 0.1) -> Dict[str, float]:
     """
     Calculate AP metrics for tracking results.
     
@@ -535,7 +535,7 @@ def main():
         print(f"Total FN: {overall_metrics['total_fn']}")
         
         # Save results to JSON
-        output_file = "results/sam3_tracking_results.json"
+        output_file = "results/sam3_tracking_iou_0.1_results.json"
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
         
         results = {
